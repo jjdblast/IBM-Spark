@@ -1,0 +1,173 @@
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>轨迹回放(路书)</title>
+    <style type="text/css">
+        body, html{width: 100%;height: 100%;margin:0;font-family:"微软雅黑";}
+        #map_canvas{width:100%;height:500px;}
+        #result {width:100%}
+    </style>
+    <script src="http://api.map.baidu.com/api?v=2.0&ak=D2b4558ebed15e52558c6a766c35ee73"></script>
+    <script type="text/javascript" src="http://api.map.baidu.com/library/LuShu/1.2/src/LuShu_min.js"></script>
+</head>
+<body>
+    <div id="map_canvas"></div>
+    <div id="result"></div>
+    <button id="run">Run</button>
+    <button id="pause">Pause</button>
+    <button id="hide">Hide Infowindow</button>
+    <button id="show">Show Infowindow</button>
+    <script>
+        var marker;
+        var map = new BMap.Map('map_canvas');
+        map.enableScrollWheelZoom();
+        map.centerAndZoom();
+        var lushu;
+
+        var arrPois=[
+            new BMap.Point(121.330759,31.201223),
+            new BMap.Point(121.316961,31.198999),
+            new BMap.Point(121.310924,31.2074),
+            new BMap.Point(121.309775,31.223459),
+            new BMap.Point(121.318111,31.225436),//
+            new BMap.Point(121.428207,31.248902),
+            new BMap.Point(121.454941,31.263719),
+            new BMap.Point(121.467589,31.267176),
+            new BMap.Point(121.470176,31.260756),
+            new BMap.Point(121.469026,31.255076),
+            new BMap.Point(121.457815,31.255076)
+        ];
+        //  map.addOverlay(new BMap.Polyline(arrPois, {strokeColor: '#111'})); //不画线
+        map.setViewport(arrPois);
+        // marker=new BMap.Marker(arrPois[0],{
+        //     icon : new BMap.Icon('http://developer.baidu.com/map/jsdemo/img/car.png', new BMap.Size(52,26),{anchor : new BMap.Size(27, 13)})
+        // });
+
+        // origin
+        marker=new BMap.Marker(arrPois[0]);
+        // real destination
+        marker_destination = new BMap.Marker(new BMap.Point(121.462533,31.252408)); // 创建点
+        map.addOverlay(marker_destination);            //增加点
+
+        // origin info
+        var label = new BMap.Label("origin point",{offset:new BMap.Size(0,-30)});
+        label.setStyle({
+            border:"1px solid rgb(204, 204, 204)",
+            color: "rgb(0, 0, 0)",
+            borderRadius:"10px",
+            padding:"5px",
+            background:"rgb(255, 255, 255)"
+        });
+        marker.setLabel(label);
+
+        // destination info
+        var label_destination = new BMap.Label("real destination point",{offset:new BMap.Size(0,-30)});
+        label_destination.setStyle({
+            border:"1px solid rgb(204, 204, 204)",
+            color: "rgb(0, 0, 0)",
+            borderRadius:"10px",
+            padding:"5px",
+            background:"rgb(255, 255, 255)"
+        });
+        marker_destination.setLabel(label_destination);        
+
+                   
+        map.addOverlay(marker);
+        BMapLib.LuShu.prototype._move=function(initPos,targetPos,effect) {
+            var pointsArr=[initPos,targetPos];  //点数组
+            var me = this,
+            //当前的帧数
+            currentCount = 0,
+            //步长，米/秒
+            timer = 10,
+            step = this._opts.speed / (1000 / timer),
+            //初始坐标
+            init_pos = this._projection.lngLatToPoint(initPos),
+            //获取结束点的(x,y)坐标
+            target_pos = this._projection.lngLatToPoint(targetPos),
+            //总的步长
+            count = Math.round(me._getDistance(init_pos, target_pos) / step);
+             //显示折线 
+            this._map.addOverlay(new BMap.Polyline(pointsArr, { 
+                strokeColor : "#111", 
+                strokeWeight : 5, 
+                strokeOpacity : 0.5 
+            })); // 画线 
+            
+            //如果小于1直接移动到下一点
+            if (count < 1) {
+                me._moveNext(++me.i);
+                return;
+            }
+            me._intervalFlag = setInterval(function() {
+                //两点之间当前帧数大于总帧数的时候，则说明已经完成移动
+                if (currentCount >= count) {
+                    clearInterval(me._intervalFlag);
+                    //移动的点已经超过总的长度
+                    if(me.i > me._path.length){
+                        return;
+                    }
+                    //运行下一个点
+                    me._moveNext(++me.i);
+                }else {
+                    currentCount++;
+                    var x = effect(init_pos.x, target_pos.x, currentCount, count),
+                        y = effect(init_pos.y, target_pos.y, currentCount, count),
+                        pos = me._projection.pointToLngLat(new BMap.Pixel(x, y));
+                    //设置marker
+                    if(currentCount == 1){
+                        var proPos = null;
+                        if(me.i - 1 >= 0){
+                            proPos = me._path[me.i - 1];
+                        }
+                        if(me._opts.enableRotation == true){
+                            me.setRotation(proPos,initPos,targetPos);
+                        }
+                        if(me._opts.autoView){
+                            if(!me._map.getBounds().containsPoint(pos)){
+                                me._map.setCenter(pos);
+                            }  
+                        }
+                    }
+                    //正在移动
+                    me._marker.setPosition(pos);
+                    //设置自定义overlay的位置
+                    me._setInfoWin(pos);  
+                }
+            },timer);
+        };
+
+        lushu = new BMapLib.LuShu(map,arrPois,{
+            defaultContent:"sample12",
+            autoView:true,//是否开启自动视野调整，如果开启那么路书在运动过程中会根据视野自动调整
+            icon  : new BMap.Icon('http://developer.baidu.com/map/jsdemo/img/car.png', new BMap.Size(52,26),{anchor : new BMap.Size(27, 13)}),
+            speed: 4500,
+            enableRotation:true,//是否设置marker随着道路的走向进行旋转
+            landmarkPois:[]
+        }); 
+           
+
+      //绑定事件
+      $("run").onclick = function(){
+        // marker.enableMassClear(); //设置后可以隐藏改点的覆盖物
+          marker.hide();
+          lushu.start();
+          //map.clearOverlays();    //清除所有覆盖物
+      }
+      $("pause").onclick = function(){
+          lushu.pause();
+      }      
+      $("hide").onclick = function(){
+          lushu.hideInfoWindow();
+      }
+      $("show").onclick = function(){
+          lushu.showInfoWindow();
+      }
+
+      function $(element){
+          return document.getElementById(element);
+      }
+
+</script>
+</body>
+</html> 
